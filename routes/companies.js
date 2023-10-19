@@ -11,27 +11,27 @@ const router = new express.Router();
 */
 
 router.get("/", async function (req, res, next) {
-	const results = await db.query(
-		`SELECT code, name, description
+  const results = await db.query(
+    `SELECT code, name, description
 			FROM companies;`);
-	console.log(results);
-	const companies = results.rows;
-	return res.json({ companies });
+  console.log(results);
+  const companies = results.rows;
+  return res.json({ companies });
 });
 
 /**
 *	Takes in company name as a query parameter
-	Queries the database for companies matching that name
-	Returns JSON like { company }
+*  Queries the database for companies matching that name
+*  Returns JSON like { company }
 */
 router.get("/:name", async function (req, res, next) {
-	const name = req.params.name;
-	const results = await db.query(
-		`SELECT code, name, description
+  const name = req.params.name;
+  const results = await db.query(
+    `SELECT code, name, description
 			FROM companies
 			WHERE name = $1`, [name]);
-	const company = results.rows[0];
-	return res.json({ company });
+  const company = results.rows[0];
+  return res.json({ company });
 });
 
 /**
@@ -40,16 +40,16 @@ router.get("/:name", async function (req, res, next) {
  * Returns JSON like { company }
  */
 router.post("/", checkEmptyBody, async function (req, res, next) {
-	const { code, name, description } = req.body;
-	const results = await db.query(
-		`INSERT INTO companies ( code ,name , description)
+  const { code, name, description } = req.body;
+  const results = await db.query(
+    `INSERT INTO companies ( code ,name , description)
 			 VALUES ($1, $2, $3)
-			 RETURNING (code , name , description)
+			 RETURNING code , name , description
 			 `, [code, name, description]);
-	const company = results.rows[0];
-	return res
-		.status(201)
-		.json({ company });
+  const company = results.rows[0];
+  return res
+    .status(201)
+    .json({ company });
 });
 
 /**
@@ -58,19 +58,38 @@ router.post("/", checkEmptyBody, async function (req, res, next) {
  * Returns JSON of the updated object like { company }
  */
 router.put("/:code", checkEmptyBody, async function (req, res, next) {
-		const code = req.params.code;
-		const { name, description } = req.body;
+  const code = req.params.code;
+  const { name, description } = req.body;
 
+  const result = await db.query(
+    `UPDATE companies
+        SET name=$2,
+          description=$3
+        WHERE code = $1
+        RETURNING code, name, description`,
+    [code, name, description],
+  );
+  const user = result.rows[0];
+  return res.status(201).json({ user });
+});
 
-})
+/** Delete user, returning {message: "Deleted"}*/
+router.delete("/:code", async function (req, res, next) {
+  await db.query(
+    "DELETE FROM companies WHERE code = $1",
+    [req.params.code],
+  );
+  return res.json({ message: "Deleted" });
+});
 
-
-
+/**
+ * If the request body is empty, throw a BadRequestError.
+ */
 function checkEmptyBody(req, res, next) {
-	if (req.body === "undefined") {
-		throw new BadRequestError("Must include JSON body");
-	}
-	next();
+  if (req.body === "undefined") {
+    throw new BadRequestError("Must include JSON body");
+  }
+  next();
 }
 
 
