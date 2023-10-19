@@ -1,15 +1,16 @@
 "use strict";
 const express = require("express");
-const { BadRequestError } = require("../expressError");
+const { BadRequestError, NotFoundError } = require("../expressError");
+const { checkEmptyBody } = require("../middleware");
 
 const db = require("../db");
 const router = new express.Router();
+
 
 /** Get companies
 *   Returns {companies: [company, company, ...] }
 *   Where company = {code, name, description}
 */
-
 router.get("/", async function (req, res, next) {
   const results = await db.query(
     `SELECT code, name, description
@@ -20,42 +21,52 @@ router.get("/", async function (req, res, next) {
 });
 
 /**
-*	Takes in company name as a query parameter
+*	Takes in company name as a URL parameter
 *  Queries the database for companies matching that name
-*  Returns JSON like { company }
+*  Returns JSON like { company: {code, name, description} }
 */
-router.get("/:name", async function (req, res, next) {
-  const name = req.params.name;
+router.get("/:code", async function (req, res, next) {
+  const code = req.params.code;
   const results = await db.query(
     `SELECT code, name, description
 			FROM companies
-			WHERE name = $1`, [name]);
+			WHERE code = $1`, [code]);
+
   const company = results.rows[0];
+  if (!company) throw new NotFoundError(`Not found: ${code}`);
   return res.json({ company });
 });
 
 /**
  * Takes in request body containing info for one company
+ * like {code, name, description}.
  * Inserts that company into the database
+ *
  * Returns JSON like { company }
+ * where company = {code, name, description}
  */
 router.post("/", checkEmptyBody, async function (req, res, next) {
   const { code, name, description } = req.body;
+
   const results = await db.query(
     `INSERT INTO companies ( code ,name , description)
 			 VALUES ($1, $2, $3)
 			 RETURNING code , name , description
 			 `, [code, name, description]);
+
   const company = results.rows[0];
+
   return res
     .status(201)
     .json({ company });
 });
 
 /**
- * Takes in company code as a URL param
+ * Takes in company code as a URL param and JSON body
+ * like {name [optional], description [optional]}
  * Fully replaces the company with that code in the DB
  * Returns JSON of the updated object like { company }
+ * where company = {code, name, description}
  */
 router.put("/:code", checkEmptyBody, async function (req, res, next) {
   const code = req.params.code;
@@ -69,28 +80,29 @@ router.put("/:code", checkEmptyBody, async function (req, res, next) {
         RETURNING code, name, description`,
     [code, name, description],
   );
-  const user = result.rows[0];
-  return res.status(201).json({ user });
+
+  const company = result.rows[0];
+  if (!company) throw new NotFoundError(`Not found: ${code}`);
+  return res.json({ user: company });
 });
 
-/** Delete user, returning {message: "Deleted"}*/
+/** Delete user, returning {status: "Deleted"}*/
 router.delete("/:code", async function (req, res, next) {
-  await db.query(
-    "DELETE FROM companies WHERE code = $1",
-    [req.params.code],
-  );
-  return res.json({ message: "Deleted" });
-});
+  const code = req.params.code;
 
-/**
- * If the request body is empty, throw a BadRequestError.
- */
-function checkEmptyBody(req, res, next) {
-  if (req.body === "undefined") {
-    throw new BadRequestError("Must include JSON body");
-  }
-  next();
-}
+  const result = await db.query(
+    `DELETE
+      FROM companies
+      WHERE code = $1
+      RETURNING code, name, description`,
+    [code],
+  );
+
+  const company = result.rows[0];
+  if (!company) throw new NotFoundError(`Not found: ${code}`);
+
+  return res.json({ status: "deleted" });
+});
 
 
 module.exports = router;
