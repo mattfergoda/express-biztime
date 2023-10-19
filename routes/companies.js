@@ -21,8 +21,8 @@ router.get("/", async function (req, res, next) {
 });
 
 /**
-*	Takes in company name as a URL parameter
-*  Queries the database for companies matching that name
+*	Takes in company code as a URL parameter
+*  Queries the database for companies matching that code
 *  Returns JSON like { company: {code, name, description} }
 */
 router.get("/:code", async function (req, res, next) {
