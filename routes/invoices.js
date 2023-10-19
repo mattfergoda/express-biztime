@@ -1,6 +1,6 @@
 "use strict";
 const express = require("express");
-const { BadRequestError } = require("../expressError");
+const { BadRequestError, NotFoundError } = require("../expressError");
 const { checkEmptyBody } = require("../middleware");
 
 const db = require("../db");
@@ -35,7 +35,7 @@ router.get("/:id", async function (req, res, next) {
 			WHERE id = $1`, [id]);
 
   const invoice = invoiceResults.rows[0];
-  if (!invoice) throw new NotFoundError(`Not found: ${id}`);
+  if (!invoice) throw new NotFoundError(`No invoice with ID ${id}`);
 
   const compCode = invoice.comp_code;
 
@@ -55,20 +55,20 @@ router.get("/:id", async function (req, res, next) {
 
 /**
  * Takes in request body containing info for one invoice
- * like {id, comp_code, description}.
+ * like {comp_code, amt}.
  * Inserts that invoice into the database
  *
  * Returns JSON like { invoice }
- * where invoice = {id, comp_code, description}
+ * where invoice = {id, comp_code, amt, paid, add_date, paid_date}
  */
 router.post("/", checkEmptyBody, async function (req, res, next) {
-  const { id, comp_code, description } = req.body;
+  const { comp_code, amt } = req.body;
 
   const results = await db.query(
-    `INSERT INTO invoices ( id ,comp_code , description)
-			 VALUES ($1, $2, $3)
-			 RETURNING id , comp_code , description
-			 `, [id, comp_code, description]);
+    `INSERT INTO invoices (comp_code , amt)
+			 VALUES ($1, $2)
+			 RETURNING id, comp_code, amt, paid, add_date, paid_date
+			 `, [comp_code, amt]);
 
   const invoice = results.rows[0];
 
@@ -79,30 +79,31 @@ router.post("/", checkEmptyBody, async function (req, res, next) {
 
 /**
  * Takes in invoice id as a URL param and JSON body
- * like {comp_code [optional], description [optional]}
+ * like {amt}
  * Fully replaces the invoice with that id in the DB
  * Returns JSON of the updated object like { invoice }
- * where invoice = {id, comp_code, description}
+ * where invoice = {id, comp_code, amt, paid, add_date, paid_date}
  */
 router.put("/:id", checkEmptyBody, async function (req, res, next) {
   const id = req.params.id;
-  const { comp_code, description } = req.body;
+  const { amt } = req.body;
+
+  if (isNaN(amt)) throw new BadRequestError(`${amt} is not a number`);
 
   const result = await db.query(
     `UPDATE invoices
-        SET comp_code=$2,
-          description=$3
+        SET amt=$2
         WHERE id = $1
-        RETURNING id, comp_code, description`,
-    [id, comp_code, description],
+        RETURNING id, comp_code, amt, paid, add_date, paid_date`,
+    [id, amt],
   );
 
   const invoice = result.rows[0];
-  if (!invoice) throw new NotFoundError(`Not found: ${id}`);
-  return res.json({ user: invoice });
+  if (!invoice) throw new NotFoundError(`No invoice with ID ${id}`);
+  return res.json({ invoice });
 });
 
-/** Delete user, returning {status: "Deleted"}*/
+/** Delete invoice, returning {status: "deleted"}*/
 router.delete("/:id", async function (req, res, next) {
   const id = req.params.id;
 
@@ -110,12 +111,12 @@ router.delete("/:id", async function (req, res, next) {
     `DELETE
       FROM invoices
       WHERE id = $1
-      RETURNING id, comp_code, description`,
+      RETURNING id`,
     [id],
   );
 
   const invoice = result.rows[0];
-  if (!invoice) throw new NotFoundError(`Not found: ${id}`);
+  if (!invoice) throw new NotFoundError(`No invoice with ID ${id}`);
 
   return res.json({ status: "deleted" });
 });

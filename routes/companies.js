@@ -23,17 +23,26 @@ router.get("/", async function (req, res, next) {
 /**
 *	Takes in company code as a URL parameter
 *  Queries the database for companies matching that code
-*  Returns JSON like { company: {code, name, description} }
+*  Returns JSON like { company: {code, name, description, invoices: [id, ...]} }
 */
 router.get("/:code", async function (req, res, next) {
   const code = req.params.code;
-  const results = await db.query(
+  const companyResults = await db.query(
     `SELECT code, name, description
 			FROM companies
 			WHERE code = $1`, [code]);
 
-  const company = results.rows[0];
+  const company = companyResults.rows[0]
+
   if (!company) throw new NotFoundError(`Not found: ${code}`);
+
+  const invoiceResults = await db.query(
+    `SELECT id
+       FROM invoices
+       WHERE comp_code = $1`, [code]
+  );
+
+  company.invoices = invoiceResults.rows;
   return res.json({ company });
 });
 
@@ -83,10 +92,10 @@ router.put("/:code", checkEmptyBody, async function (req, res, next) {
 
   const company = result.rows[0];
   if (!company) throw new NotFoundError(`Not found: ${code}`);
-  return res.json({ user: company });
+  return res.json({ company });
 });
 
-/** Delete user, returning {status: "Deleted"}*/
+/** Delete company, returning {status: "Deleted"}*/
 router.delete("/:code", async function (req, res, next) {
   const code = req.params.code;
 
